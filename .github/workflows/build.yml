@@ -1,0 +1,37 @@
+name: Build Alameer Firmware
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git python3 unzip libncurses5-dev gawk
+
+      - name: Clone Padavan source
+        run: |
+          git clone --depth 1 https://github.com/hanwckf/padavan-4.4.git padavan
+          cd padavan
+          # استبدال الشعار
+          cp ${{ github.workspace }}/trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png
+          # تطبيق الإعدادات الافتراضية (IP, WiFi, etc.)
+          cp ${{ github.workspace }}/trunk/user/shared/defaults.h trunk/user/shared/defaults.h
+
+      - name: Build firmware
+        run: |
+          cd padavan
+          # بناء لجهاز K2P
+          ./build_firmware_modify K2P
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alameer-Firmware
+          path: padavan/trunk/images/*.trx
