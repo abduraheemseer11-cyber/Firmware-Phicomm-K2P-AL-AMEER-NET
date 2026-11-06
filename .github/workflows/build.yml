@@ -13,29 +13,10 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential git python3 unzip libncurses5-dev gawk autoconf automake libtool pkg-config libssl-dev
-
-    - name: Clone Padavan Source
-      run: |
-        # استخدام مستودع Padavan المستقر لجهاز K2P
-        git clone --depth 1 https://github.com/hanwckf/padavan-4.4.git padavan
-
-    - name: Run DIY Part 2 (Inject Custom Files)
-      run: |
-        chmod +x diy/diy-part2.sh
-        bash diy/diy-part2.sh
-
-    - name: Build Firmware
-      run: |
-        cd padavan
-        # بناء النسخة الخاصة بجهاز K2P
-        ./build_firmware_modify K2P
-
-    - name: Upload Firmware Artifact
-      uses: actions/upload-artifact@v4
+    - name: Build Firmware with TurBoTse's Action
+      uses: TurBoTse/Padavan-Build@main
       with:
-        name: Alameer-K2P-Firmware
-        path: padavan/trunk/images/*.trx
+        targets: K2P
+        # يمكنك إضافة خيارات التخصيص هنا لاحقاً، مثل:
+        # customization: '{"lanip":"192.168.1.20"}'
+        # release: true
