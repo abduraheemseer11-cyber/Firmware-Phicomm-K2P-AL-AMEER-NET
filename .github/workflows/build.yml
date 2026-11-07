@@ -1,50 +1,51 @@
-name: Build Alameer Firmware (Padavan)
+name: Build Alameer Firmware (K2P)
 
 on:
   workflow_dispatch:
-    inputs:
-      targets:
-        description: 'Router models (comma-separated)'
-        required: true
-        default: 'K2P'
-      toolchain:
-        description: 'Toolchain'
-        required: true
-        type: choice
-        options:
-          - mipsel-linux-musl
-          - mipsel-linux-uclibc
-        default: mipsel-linux-musl
-      customization:
-        description: 'Customization JSON (IP, WiFi, etc.)'
-        required: true
-        default: '{"lanip":"192.168.1.20","signaccount":"admin","signpassword":"admin","wifi2gssid":"AL-AMEER-NET (   )_2G","wifi5gssid":"AL-AMEER-NET (   )_5G"}'
-      plugins:
-        description: 'Plugin JSON'
-        required: true
-        default: '{"shadowsocks":"n","v2ray":"n","xray":"n","trojan":"n","ssobfs":"n","smartdns":"n","vlmcsd":"y","ttyd":"y","iperf3":"n"}'
-      nanoversion:
-        description: 'Build Nano Version'
-        type: boolean
-        default: false
-      release:
-        description: 'Upload to GitHub Release'
-        type: boolean
-        default: true
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
     steps:
-    - name: Checkout
+    - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git python3 unzip libncurses5-dev gawk autoconf automake libtool pkg-config libssl-dev fakeroot
+
+    - name: Clone Padavan Source
+      run: |
+        git clone --depth 1 https://github.com/hanwckf/padavan-4.4.git padavan
+
+    - name: Inject Custom Files (Alameer Settings, Kernel, Config & Logo)
+      run: |
+        # 1. نسخ ملف الإعدادات الافتراضية (IP, WiFi, DHCP, IPv6)
+        cp -f trunk/user/shared/defaults.h padavan/trunk/user/shared/defaults.h
+
+        # 2. نسخ الشعار المخصص
+        cp -f trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png padavan/trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png
+
+        # 3. نسخ ملف النواة المخصص
+        cp -f trunk/configs/boards/K2P/kernel-3.4.x.config padavan/trunk/configs/boards/K2P/kernel-3.4.x.config
+
+        # 4. نسخ قالب البناء المخصص
+        cp -f trunk/configs/templates/K2P.config padavan/trunk/configs/templates/K2P.config
+
+        # 5. تعديل اسم ملف النواة داخل القالب ليتطابق مع اسم ملفنا
+        sed -i 's/kernel-3.4.x-5.0.config/kernel-3.4.x.config/g' padavan/trunk/configs/templates/K2P.config
+
     - name: Build Firmware
-      uses: TurBoTse/Padavan-Build@main
+      run: |
+        cd padavan/trunk
+        ./build_firmware_modify K2P
+
+    - name: Upload Firmware Artifact
+      uses: actions/upload-artifact@v4
       with:
-        targets: ${{ github.event.inputs.targets }}
-        toolchain: ${{ github.event.inputs.toolchain }}
-        customization: ${{ github.event.inputs.customization }}
-        plugins: ${{ github.event.inputs.plugins }}
-        nanoversion: ${{ github.event.inputs.nanoversion }}
-        release: ${{ github.event.inputs.release }}
+        name: Alameer-K2P-Firmware
+        path: padavan/trunk/images/*.trx
