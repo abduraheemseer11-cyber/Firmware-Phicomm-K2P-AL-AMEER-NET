@@ -1,22 +1,50 @@
 name: Build Alameer Firmware (Padavan)
 
 on:
-  workflow_dispatch: # يسمح لك بتشغيل البناء يدوياً
-  push:
-    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Router models (comma-separated)'
+        required: true
+        default: 'K2P'
+      toolchain:
+        description: 'Toolchain'
+        required: true
+        type: choice
+        options:
+          - mipsel-linux-musl
+          - mipsel-linux-uclibc
+        default: mipsel-linux-musl
+      customization:
+        description: 'Customization JSON (IP, WiFi, etc.)'
+        required: true
+        default: '{"lanip":"192.168.1.20","signaccount":"admin","signpassword":"admin","wifi2gssid":"AL-AMEER-NET (   )_2G","wifi5gssid":"AL-AMEER-NET (   )_5G"}'
+      plugins:
+        description: 'Plugin JSON'
+        required: true
+        default: '{"shadowsocks":"n","v2ray":"n","xray":"n","trojan":"n","ssobfs":"n","smartdns":"n","vlmcsd":"y","ttyd":"y","iperf3":"n"}'
+      nanoversion:
+        description: 'Build Nano Version'
+        type: boolean
+        default: false
+      release:
+        description: 'Upload to GitHub Release'
+        type: boolean
+        default: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Repository
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Build Firmware with TurBoTse's Action
+    - name: Build Firmware
       uses: TurBoTse/Padavan-Build@main
       with:
-        targets: K2P
-        # يمكنك إضافة خيارات التخصيص هنا لاحقاً، مثل:
-        # customization: '{"lanip":"192.168.1.20"}'
-        # release: true
+        targets: ${{ github.event.inputs.targets }}
+        toolchain: ${{ github.event.inputs.toolchain }}
+        customization: ${{ github.event.inputs.customization }}
+        plugins: ${{ github.event.inputs.plugins }}
+        nanoversion: ${{ github.event.inputs.nanoversion }}
+        release: ${{ github.event.inputs.release }}
