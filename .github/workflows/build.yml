@@ -42,7 +42,8 @@ jobs:
     - name: Build Firmware
       run: |
         cd padavan/trunk
-        ./build_firmware_modify K2P
+        # تم إضافة fakeroot هنا بناءً على طلب السكربت
+        fakeroot ./build_firmware_modify K2P
 
     - name: Upload Firmware Artifact
       uses: actions/upload-artifact@v4
