@@ -1,78 +1,83 @@
-name: Build Alameer Firmware (K2P)
+name: Build Alameer Firmware (Phicomm K2P)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPO: https://github.com/immortalwrt/immortalwrt
+  SOURCE_BRANCH: openwrt-24.10
+  TZ: UTC
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential git python3 unzip libncurses5-dev gawk \
-          autoconf automake libtool pkg-config libssl-dev fakeroot \
-          gettext autopoint libtool-bin liblzma-dev libltdl-dev \
-          ccache gperf python3-docutils help2man texinfo \
-          libgmp3-dev libmpc-dev libmpfr-dev wget libc-dev-bin
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
 
-    - name: Clone Padavan Source & Toolchain
-      run: |
-        # 1. استنساخ كود المصدر الأساسي
-        git clone --depth 1 https://github.com/hanwckf/rt-n56u.git padavan
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget
 
-        # 2. تحميل الـ Toolchain الجاهز
-        wget -q https://github.com/hanwckf/padavan-toolchain/releases/download/v1.1/mipsel-linux-uclibc.tar.xz
-        mkdir -p padavan/toolchain-mipsel/toolchain-3.4.x
-        tar -xJf mipsel-linux-uclibc.tar.xz -C padavan/toolchain-mipsel/toolchain-3.4.x --strip-components=1
-        
-        # التأكد من وجود المترجم
-        ls -la padavan/toolchain-mipsel/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc
+      - name: Clone ImmortalWrt source
+        run: git clone --depth 1 -b $SOURCE_BRANCH $SOURCE_REPO openwrt
 
-    - name: Inject Custom Files (Alameer Settings, Kernel, Config & Logo)
-      run: |
-        # 1. نسخ ملف الإعدادات الافتراضية
-        cp -f trunk/user/shared/defaults.h padavan/trunk/user/shared/defaults.h
+      - name: Custom feeds (part 1)
+        run: |
+          cd openwrt
+          bash ../scripts/diy-part1.sh
 
-        # 2. نسخ الشعار المخصص
-        cp -f trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png padavan/trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png
+      - name: Update & install feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-        # 3. نسخ ملف النواة المخصص
-        cp -f trunk/configs/boards/K2P/kernel-3.4.x.config padavan/trunk/configs/boards/K2P/kernel-3.4.x.config
+      - name: Apply Alameer customization (part 2)
+        run: |
+          cp -r package/luci-app-alameer-quick openwrt/package/
+          cp -r files openwrt/files
+          cp config/k2p.config openwrt/.config
+          cd openwrt
+          bash ../scripts/diy-part2.sh
+          make defconfig
 
-        # 4. نسخ قالب البناء المخصص
-        cp -f trunk/configs/templates/K2P.config padavan/trunk/configs/templates/K2P.config
+      - name: Download sources
+        run: |
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
 
-        # 5. تعديل اسم ملف النواة داخل القالب ليتطابق مع اسم ملفنا
-        sed -i 's/kernel-3.4.x-5.0.config/kernel-3.4.x.config/g' padavan/trunk/configs/templates/K2P.config
+      - name: Compile
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
 
-    - name: Update Kernel Configuration (Non-interactive)
-      run: |
-        cd padavan/trunk
-        # نسخ ملف النواة إلى مجلد لينكس
-        cp configs/boards/K2P/kernel-3.4.x.config linux-3.4.x/.config
-        
-        # استخدام olddefconfig لتحديث الإعدادات دون تفاعل
-        CROSS_COMPILE="$GITHUB_WORKSPACE/padavan/toolchain-mipsel/toolchain-3.4.x/bin/mipsel-linux-uclibc-"
-        make -C linux-3.4.x ARCH=mips CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
-        
-        # نسخ الملف المحدث مرة أخرى إلى مجلد الإعدادات (اختياري، لكنه يحافظ على التحديثات)
-        cp linux-3.4.x/.config configs/boards/K2P/kernel-3.4.x.config
+      - name: Collect images
+        run: |
+          mkdir -p out
+          cp openwrt/bin/targets/ramips/mt7621/*phicomm_k2p* out/ || true
+          cp openwrt/bin/targets/ramips/mt7621/*.manifest out/ || true
+          ls -lh out
 
-    - name: Build Firmware
-      run: |
-        cd padavan/trunk
-        fakeroot ./build_firmware_modify K2P
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Alameer-K2P-firmware
+          path: out/*
 
-    - name: Upload Firmware Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Alameer-K2P-Firmware
-        path: padavan/trunk/images/*.trx
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

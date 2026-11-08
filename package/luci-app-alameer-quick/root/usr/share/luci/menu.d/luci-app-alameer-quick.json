@@ -1,0 +1,14 @@
+{
+	"admin/alameer": {
+		"title": "Alameer Software",
+		"order": 1,
+		"action": { "type": "firstchild" },
+		"depends": { "acl": [ "luci-app-alameer-quick" ] }
+	},
+	"admin/alameer/quick": {
+		"title": "البرمجة السريعة",
+		"order": 1,
+		"action": { "type": "view", "path": "alameer/quick" },
+		"depends": { "acl": [ "luci-app-alameer-quick" ], "uci": { "alameer": true } }
+	}
+}

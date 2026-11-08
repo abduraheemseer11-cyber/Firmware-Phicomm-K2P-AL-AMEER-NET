@@ -1,0 +1,7 @@
+{
+	"luci-app-alameer-quick": {
+		"description": "Grant access to Alameer quick programming",
+		"read":  { "uci": [ "alameer", "wireless", "network" ] },
+		"write": { "uci": [ "alameer" ] }
+	}
+}

@@ -1,0 +1,56 @@
+#!/bin/sh
+# Alameer Software - first boot defaults
+
+LAN_IP="192.168.1.20"
+LAN_MASK="255.255.255.0"
+GATEWAY="192.168.1.1"     # عدّله حسب الراوتر الرئيسي
+DNS="192.168.1.1"
+
+uci set system.@system[0].hostname='Alameer'
+uci set luci.main.lang='ar'
+uci commit system luci
+
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr="$LAN_IP"
+uci set network.lan.netmask="$LAN_MASK"
+uci set network.lan.gateway="$GATEWAY"
+uci -q delete network.lan.dns
+uci add_list network.lan.dns="$DNS"
+uci -q delete network.lan.ip6assign
+uci set network.lan.ipv6='0'
+
+uci -q delete network.wan
+uci -q delete network.wan6
+BR=$(uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -1)
+if [ -n "$BR" ]; then
+  uci -q get network.$BR.ports | grep -qw wan || uci add_list network.$BR.ports='wan'
+fi
+
+uci -q delete network.globals.ula_prefix
+uci commit network
+
+uci set dhcp.lan.ignore='1'
+uci set dhcp.lan.dhcpv6='disabled'
+uci set dhcp.lan.ra='disabled'
+uci set dhcp.lan.ndp='disabled'
+uci -q delete dhcp.wan
+uci set dhcp.@dnsmasq[0].filter_aaaa='1'
+uci commit dhcp
+
+cat > /etc/sysctl.d/99-alameer-ipv6.conf <<EOT
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+net.ipv6.conf.lo.disable_ipv6=1
+EOT
+
+[ -s /etc/config/wireless ] || wifi config
+MACSUF=$(cat /sys/class/net/eth0/address 2>/dev/null | awk -F: '{print toupper($5 $6)}')
+[ -z "$MACSUF" ] && MACSUF="0000"
+
+uci set alameer.main.ssid="AL-AMEER-NET ($MACSUF)"
+uci commit alameer
+
+/usr/libexec/alameer-apply
+/etc/init.d/alameer enable
+
+exit 0
