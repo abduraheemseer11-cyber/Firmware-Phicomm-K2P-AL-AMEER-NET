@@ -3,114 +3,76 @@ name: Build Alameer Firmware (K2P)
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: read
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            python3 \
-            python3-docutils \
-            unzip \
-            xz-utils \
-            cpio \
-            kmod \
-            libncurses5-dev \
-            gawk \
-            flex \
-            bison \
-            gperf \
-            autoconf \
-            automake \
-            autopoint \
-            gettext \
-            libtool \
-            libtool-bin \
-            libltdl-dev \
-            pkg-config \
-            libssl-dev \
-            zlib1g-dev \
-            libgmp-dev \
-            libmpc-dev \
-            libmpfr-dev \
-            texinfo \
-            help2man \
-            fakeroot
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential git python3 unzip libncurses5-dev gawk \
+          autoconf automake libtool pkg-config libssl-dev fakeroot \
+          gettext autopoint libtool-bin liblzma-dev libltdl-dev \
+          ccache gperf python3-docutils help2man texinfo \
+          libgmp3-dev libmpc-dev libmpfr-dev wget libc-dev-bin
 
-      - name: Clone Padavan source
-        run: |
-          git clone --depth 1 https://github.com/hanwckf/rt-n56u.git padavan
+    - name: Clone Padavan Source & Toolchain
+      run: |
+        # 1. استنساخ كود المصدر الأساسي
+        git clone --depth 1 https://github.com/hanwckf/rt-n56u.git padavan
 
-      - name: Download MIPS toolchain
-        run: |
-          TOOLCHAIN_DIR="$GITHUB_WORKSPACE/padavan/toolchain-mipsel/toolchain-3.4.x"
-          TOOLCHAIN_ARCHIVE="$RUNNER_TEMP/mipsel-linux-uclibc.tar.xz"
+        # 2. تحميل الـ Toolchain الجاهز
+        wget -q https://github.com/hanwckf/padavan-toolchain/releases/download/v1.1/mipsel-linux-uclibc.tar.xz
+        mkdir -p padavan/toolchain-mipsel/toolchain-3.4.x
+        tar -xJf mipsel-linux-uclibc.tar.xz -C padavan/toolchain-mipsel/toolchain-3.4.x --strip-components=1
+        
+        # التأكد من وجود المترجم
+        ls -la padavan/toolchain-mipsel/toolchain-3.4.x/bin/mipsel-linux-uclibc-gcc
 
-          mkdir -p "$TOOLCHAIN_DIR"
-          curl -fL \
-            "https://github.com/hanwckf/padavan-toolchain/releases/download/v1.1/mipsel-linux-uclibc.tar.xz" \
-            -o "$TOOLCHAIN_ARCHIVE"
-          tar -xf "$TOOLCHAIN_ARCHIVE" -C "$TOOLCHAIN_DIR"
+    - name: Inject Custom Files (Alameer Settings, Kernel, Config & Logo)
+      run: |
+        # 1. نسخ ملف الإعدادات الافتراضية
+        cp -f trunk/user/shared/defaults.h padavan/trunk/user/shared/defaults.h
 
-          test -x "$TOOLCHAIN_DIR/bin/mipsel-linux-uclibc-gcc"
+        # 2. نسخ الشعار المخصص
+        cp -f trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png padavan/trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png
 
-      - name: Inject custom files
-        run: |
-          cp -f trunk/user/shared/defaults.h \
-            padavan/trunk/user/shared/defaults.h
+        # 3. نسخ ملف النواة المخصص
+        cp -f trunk/configs/boards/K2P/kernel-3.4.x.config padavan/trunk/configs/boards/K2P/kernel-3.4.x.config
 
-          cp -f trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png \
-            padavan/trunk/user/www/n56u_ribbon_fixed/bootstrap/img/asus_logo.png
+        # 4. نسخ قالب البناء المخصص
+        cp -f trunk/configs/templates/K2P.config padavan/trunk/configs/templates/K2P.config
 
-          cp -f trunk/configs/boards/K2P/kernel-3.4.x.config \
-            padavan/trunk/configs/boards/K2P/kernel-3.4.x.config
+        # 5. تعديل اسم ملف النواة داخل القالب ليتطابق مع اسم ملفنا
+        sed -i 's/kernel-3.4.x-5.0.config/kernel-3.4.x.config/g' padavan/trunk/configs/templates/K2P.config
 
-          cp -f trunk/configs/templates/K2P.config \
-            padavan/trunk/configs/templates/K2P.config
+    - name: Update Kernel Configuration (Non-interactive)
+      run: |
+        cd padavan/trunk
+        # نسخ ملف النواة إلى مجلد لينكس
+        cp configs/boards/K2P/kernel-3.4.x.config linux-3.4.x/.config
+        
+        # استخدام olddefconfig لتحديث الإعدادات دون تفاعل
+        CROSS_COMPILE="$GITHUB_WORKSPACE/padavan/toolchain-mipsel/toolchain-3.4.x/bin/mipsel-linux-uclibc-"
+        make -C linux-3.4.x ARCH=mips CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
+        
+        # نسخ الملف المحدث مرة أخرى إلى مجلد الإعدادات (اختياري، لكنه يحافظ على التحديثات)
+        cp linux-3.4.x/.config configs/boards/K2P/kernel-3.4.x.config
 
-          sed -i \
-            's/kernel-3.4.x-5.0.config/kernel-3.4.x.config/g' \
-            padavan/trunk/configs/templates/K2P.config
+    - name: Build Firmware
+      run: |
+        cd padavan/trunk
+        fakeroot ./build_firmware_modify K2P
 
-      - name: Update kernel configuration
-        shell: bash
-        run: |
-          cd padavan/trunk
-
-          cp configs/boards/K2P/kernel-3.4.x.config \
-            linux-3.4.x/.config
-
-          CROSS_COMPILE="$GITHUB_WORKSPACE/padavan/toolchain-mipsel/toolchain-3.4.x/bin/mipsel-linux-uclibc-"
-          yes "" | make -C linux-3.4.x \
-            ARCH=mips \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            oldconfig
-
-          cp linux-3.4.x/.config \
-            configs/boards/K2P/kernel-3.4.x.config
-
-      - name: Build firmware
-        run: |
-          cd padavan/trunk
-          fakeroot ./build_firmware_modify K2P
-
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Alameer-K2P-Firmware
-          path: padavan/trunk/images/*.trx
-          if-no-files-found: error
+    - name: Upload Firmware Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Alameer-K2P-Firmware
+        path: padavan/trunk/images/*.trx
