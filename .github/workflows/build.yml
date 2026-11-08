@@ -20,7 +20,8 @@ jobs:
 
     - name: Clone Padavan Source
       run: |
-        git clone --depth 1 https://github.com/hanwckf/padavan-4.4.git padavan
+        # تم التغيير إلى المستودع الذي يحتوي على مجلد linux-3.4.x
+        git clone --depth 1 https://github.com/hanwckf/rt-n56u.git padavan
 
     - name: Inject Custom Files (Alameer Settings, Kernel, Config & Logo)
       run: |
@@ -42,7 +43,6 @@ jobs:
     - name: Build Firmware
       run: |
         cd padavan/trunk
-        # تم إضافة fakeroot هنا بناءً على طلب السكربت
         fakeroot ./build_firmware_modify K2P
 
     - name: Upload Firmware Artifact
