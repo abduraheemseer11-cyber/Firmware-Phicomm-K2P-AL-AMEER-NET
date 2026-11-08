@@ -8,6 +8,7 @@ DNS="192.168.1.1"
 
 uci set system.@system[0].hostname='Alameer'
 uci set luci.main.lang='ar'
+uci set luci.main.mediaurlbase='/luci-static/material'
 uci commit system luci
 
 uci set network.lan.proto='static'
