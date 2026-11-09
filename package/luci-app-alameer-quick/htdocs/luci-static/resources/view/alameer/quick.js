@@ -1,87 +1,135 @@
 'use strict';
 'require view';
 'require form';
+'require uci';
 
 return view.extend({
+	load: function () {
+		return uci.load(['network', 'wireless']);
+	},
+
 	render: function () {
-		var m, s, o;
+		var nm = new form.Map('network', _('Quick Programming'),
+			_('Choose the right programming mode and press Save & Apply - اختر وضع البرمجة المناسبة واضغط على حفظ')),
+		    wm = new form.Map('wireless'),
+		    s, o;
 
-		m = new form.Map('alameer', _('البرمجة السريعة'),
-			_('اختر وضع البرمجة المناسبة واضغط على حفظ'));
+		/* ---------------- LAN ---------------- */
+		s = nm.section(form.NamedSection, 'lan', 'interface', _('LAN'));
 
-		s = m.section(form.NamedSection, 'main', 'quick');
-		s.addremove = false;
-		s.tab('quick', _('البرمجة السريعة'));
-		s.tab('more', _('More Settings'));
-
-		o = s.taboption('quick', form.ListValue, 'type', _('Type'));
-		o.value('ap', 'برمجة أكسس Access Point');
-		o.value('wds', 'برمجة أكسس WDS');
-		o.value('mesh', 'برمجة أكسس MESH');
-		o.default = 'ap';
-
-		o = s.taboption('quick', form.Value, 'ipaddr', _('IPv4 address'));
+		o = s.option(form.Value, 'ipaddr', _('IPv4 address'));
 		o.datatype = 'ip4addr("nomask")';
-		o.placeholder = '192.168.1.20';
+		o.rmempty = false;
 
-		o = s.taboption('quick', form.Value, 'netmask', _('IPv4 netmask'));
+		o = s.option(form.Value, 'netmask', _('IPv4 netmask'));
 		o.datatype = 'ip4addr("nomask")';
 		o.value('255.255.255.0');
 		o.value('255.255.0.0');
 		o.value('255.0.0.0');
 		o.value('255.255.255.128');
-		o.default = '255.255.255.0';
-
-		o = s.taboption('quick', form.Value, 'ssid', _('اسم الشبكة'));
-		o.placeholder = 'AL-AMEER-NET (0000)';
-
-		o = s.taboption('quick', form.Flag, 'vlan', _('إضافة فيلان'));
 		o.rmempty = false;
 
-		o = s.taboption('quick', form.Value, 'vlan_id', _('VLAN ID'));
-		o.datatype = 'range(1,4094)';
-		o.depends('vlan', '1');
+		o = s.option(form.Value, 'gateway', _('IPv4 gateway'));
+		o.datatype = 'ip4addr("nomask")';
+		o.optional = true;
 
-		o = s.taboption('quick', form.Flag, 'wifipass_en', _('تخصيص كلمة مرور Wifi'));
-		o.rmempty = false;
+		/* ---------------- Radios ---------------- */
+		uci.sections('wireless', 'wifi-device').forEach(function (r) {
+			var rid = r['.name'];
+			var band = r.band;
+			if (!band) {
+				if (r.hwmode == '11g') band = '2g';
+				else if (r.hwmode == '11a') band = '5g';
+				else band = (+r.channel > 0 && +r.channel <= 14) ? '2g' : '5g';
+			}
+			var is2g = (band == '2g');
+			var title = is2g ? _('Wireless 2.4GHz') : _('Wireless 5GHz');
 
-		o = s.taboption('quick', form.Value, 'wifipass', _('Wifi password'));
-		o.password = true;
-		o.datatype = 'wpakey';
-		o.depends('wifipass_en', '1');
+			s = wm.section(form.NamedSection, rid, 'wifi-device', title + ' - ' + _('Radio'));
 
-		o = s.taboption('more', form.Value, 'channel2g', _('2.4GHz Channel'));
-		o.datatype = 'range(1,14)';
-		o.default = '4';
+			o = s.option(form.Value, 'channel', _('Channel'));
+			o.value('auto', _('auto'));
+			if (is2g) for (var c = 1; c <= 13; c++) o.value(c);
+			else [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165].forEach(function (c) { o.value(c); });
 
-		o = s.taboption('more', form.Value, 'txpower2g', _('2.4GHz Tx power (dBm)'));
-		o.datatype = 'range(1,30)';
-		o.default = '20';
+			o = s.option(form.ListValue, 'htmode', _('Width / Mode'));
+			if (is2g) {
+				o.value('HT20', 'N - 20 MHz');
+				o.value('HT40', 'N - 40 MHz');
+			} else {
+				o.value('VHT20', 'AC - 20 MHz');
+				o.value('VHT40', 'AC - 40 MHz');
+				o.value('VHT80', 'AC - 80 MHz');
+			}
 
-		o = s.taboption('more', form.Value, 'channel5g', _('5GHz Channel'));
-		o.datatype = 'uinteger';
-		o.default = '116';
+			o = s.option(form.Value, 'txpower', _('Maximum transmit power (dBm)'));
+			o.datatype = 'range(1,30)';
+			o.optional = true;
 
-		o = s.taboption('more', form.ListValue, 'htmode5g', _('5GHz Width'));
-		o.value('VHT20', '20 MHz');
-		o.value('VHT40', '40 MHz');
-		o.value('VHT80', '80 MHz');
-		o.default = 'VHT40';
+			var ifc = uci.sections('wireless', 'wifi-iface').filter(function (i) { return i.device == rid; })[0];
+			if (!ifc) return;
+			var sid = ifc['.name'];
 
-		o = s.taboption('more', form.Value, 'txpower5g', _('5GHz Tx power (dBm)'));
-		o.datatype = 'range(1,30)';
-		o.default = '23';
+			s = wm.section(form.NamedSection, sid, 'wifi-iface', title + ' - ' + _('Network'));
 
-		o = s.taboption('more', form.Value, 'mesh_id', _('Mesh ID'));
-		o.depends('type', 'mesh');
-		o.default = 'AL-AMEER-MESH';
+			o = s.option(form.ListValue, 'alameer_type', _('Type'));
+			o.value('ap', 'Access Point - برمجة أكسس');
+			o.value('ap-wds', 'Access Point (WDS) - برمجة أكسس WDS');
+			o.value('mesh', 'MESH - برمجة أكسس MESH');
+			o.cfgvalue = function (section_id) {
+				if (uci.get('wireless', section_id, 'mode') == 'mesh') return 'mesh';
+				return uci.get('wireless', section_id, 'wds') == '1' ? 'ap-wds' : 'ap';
+			};
+			o.write = function (section_id, value) {
+				if (value == 'mesh') {
+					uci.set('wireless', section_id, 'mode', 'mesh');
+					uci.unset('wireless', section_id, 'wds');
+				} else {
+					uci.set('wireless', section_id, 'mode', 'ap');
+					uci.unset('wireless', section_id, 'mesh_id');
+					if (value == 'ap-wds') uci.set('wireless', section_id, 'wds', '1');
+					else uci.unset('wireless', section_id, 'wds');
+				}
+			};
+			o.remove = function () {};
 
-		return m.render().then(function (node) {
-			var head = E('div', { 'style': 'text-align:center;margin-bottom:1em' }, [
-				E('img', { 'src': '/luci-static/alameer/logo.png', 'style': 'max-width:150px;height:auto' })
+			o = s.option(form.Value, 'ssid', _('ESSID'));
+			o.depends('alameer_type', 'ap');
+			o.depends('alameer_type', 'ap-wds');
+			o.datatype = 'maxlength(32)';
+			o.rmempty = false;
+
+			o = s.option(form.Value, 'mesh_id', _('Mesh ID'));
+			o.depends('alameer_type', 'mesh');
+			o.placeholder = 'AL-AMEER-MESH';
+			o.rmempty = false;
+
+			o = s.option(form.ListValue, 'network', _('Network'));
+			o.value('lan', 'lan');
+			o.default = 'lan';
+
+			o = s.option(form.ListValue, 'encryption', _('Security'));
+			o.value('none', _('No Encryption'));
+			o.value('psk2', 'WPA2-PSK');
+			o.value('sae', 'WPA3-SAE');
+			o.default = 'none';
+
+			o = s.option(form.Value, 'key', _('Wifi password'));
+			o.password = true;
+			o.datatype = 'wpakey';
+			o.depends('encryption', 'psk2');
+			o.depends('encryption', 'sae');
+			o.rmempty = false;
+		});
+
+		return Promise.all([nm.render(), wm.render()]).then(function (nodes) {
+			return E([
+				E('div', { 'style': 'text-align:center;margin-bottom:1em' }, [
+					E('img', { 'src': '/luci-static/alameer/logo.png', 'style': 'max-width:150px;height:auto' })
+				]),
+				nodes[0],
+				nodes[1]
 			]);
-			node.insertBefore(head, node.firstChild);
-			return node;
 		});
 	}
 });

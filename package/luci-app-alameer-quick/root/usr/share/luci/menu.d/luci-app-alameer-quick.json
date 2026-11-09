@@ -1,14 +1,8 @@
 {
-	"admin/alameer": {
-		"title": "البرمجة السريعة",
+	"admin/quick": {
+		"title": "Quick Programming",
 		"order": 0,
-		"action": { "type": "firstchild" },
-		"depends": { "acl": [ "luci-app-alameer-quick" ] }
-	},
-	"admin/alameer/quick": {
-		"title": "البرمجة السريعة",
-		"order": 1,
 		"action": { "type": "view", "path": "alameer/quick" },
-		"depends": { "acl": [ "luci-app-alameer-quick" ], "uci": { "alameer": true } }
+		"depends": { "acl": [ "luci-app-alameer-quick" ], "uci": { "wireless": true } }
 	}
 }

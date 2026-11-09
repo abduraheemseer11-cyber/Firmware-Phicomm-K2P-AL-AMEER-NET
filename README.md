@@ -2,45 +2,38 @@
 <img src="docs/logo.png" width="220" alt="Alameer Software"/>
 
 # Alameer Software Firmware
-**Firmware خاص مبني على ImmortalWrt لجهاز Phicomm K2P (MT7621 + MT7615، Flash 16MB)**
+**Custom ImmortalWrt firmware for Phicomm K2P (MT7621 + MT7615, 16MB flash)**
 </div>
 
 ## الإعدادات الافتراضية
 
 | الإعداد | القيمة |
 |---|---|
-| IP الجهاز | `192.168.1.20` |
+| اللغة | English |
+| IP الجهاز | `10.0.0.20` |
 | DHCP / DHCPv6 / IPv6 | معطّل |
-| منفذ WAN | يُضاف إلى الجسر (وضع Access Point) |
-| Gateway / DNS | `192.168.1.1` (عدّله في `files/etc/uci-defaults/99-alameer-defaults`) |
+| WAN | يُضاف إلى الجسر (وضع Access Point) |
+| Gateway / DNS | `10.0.0.1` (عدّله في `files/etc/uci-defaults/999-alameer-defaults`) |
 
-**WiFi 2.4GHz:** Access Point، قناة 4، عرض 20، قدرة 20dBm، SSID `AL-AMEER-NET (XXXX)_2G`، شبكة lan، بدون كلمة مرور.
+**2.4GHz:** AP، قناة 4، عرض 20، **Max Tx power = 20 dBm**، ESSID `AL-AMEER-NET (XXXX)_2G`، شبكة lan، بدون كلمة مرور.
 
-**WiFi 5GHz:** Access Point (WDS)، قناة 116، عرض 40 (VHT40)، قدرة 23dBm، SSID `AL-AMEER-NET (XXXX)_5G`، شبكة lan، بدون كلمة مرور.
+**5GHz:** AP (WDS)، قناة 116، عرض 40 (VHT40)، **Max Tx power = 23 dBm**، ESSID `AL-AMEER-NET (XXXX)_5G`، شبكة lan، بدون كلمة مرور.
 
-`XXXX` = آخر 4 خانات من MAC الجهاز تلقائياً. غيّرها من صفحة "البرمجة السريعة ← اسم الشبكة".
+`XXXX` = آخر 4 خانات من MAC الجهاز.
 
-## صفحة LuCI «البرمجة السريعة»
-أول عنصر في القائمة الجانبية: **البرمجة السريعة**، على نمط واجهة حديثة بقائمة جانبية (ثيم Material الافتراضي):
-النوع (Access Point / WDS / MESH)، IPv4 address، IPv4 netmask، اسم الشبكة، إضافة فيلان، تخصيص كلمة مرور Wifi، وتبويب More Settings (القنوات والقدرة والعرض).
-الحفظ يطبّق الإعدادات تلقائياً عبر `/usr/libexec/alameer-apply`.
+## Quick Programming
+أول عنصر في القائمة الجانبية. الصفحة تقرأ وتكتب مباشرة في `/etc/config/network` و`/etc/config/wireless`
+(نفس الإعدادات الحقيقية في Network ← Wireless)، وتحتوي: IP / Netmask / Gateway، وقناة وعرض وقدرة كل راديو،
+ونوع البرمجة (AP / AP-WDS / MESH)، وESSID، والتشفير وكلمة المرور.
 
-## البناء على GitHub
-1. أنشئ مستودعاً جديداً وارفع كل محتويات هذا المجلد.
-2. تبويب **Actions ← Build Alameer Firmware (Phicomm K2P) ← Run workflow**.
-3. بعد ~1-2 ساعة حمّل `*phicomm_k2p*sysupgrade.bin` من Artifacts.
-4. لإصدار Release: `git tag v1.0 && git push --tags`.
+## تقليل الحجم
+أُزيل: الصينية والعربية، firewall4، dnsmasq/odhcpd، IPv6 (kernel + packages)، PPP، تطبيقات LuCI الإضافية، واستُبدل wpad بنسخة mesh-mbedtls الأصغر.
+حجم `sysupgrade.bin` يظهر في خطوة "Collect images" في GitHub Actions (الحد الأقصى للجهاز ≈ 15.4MB).
 
-## البناء محلياً
-```bash
-git clone --depth 1 -b openwrt-24.10 https://github.com/immortalwrt/immortalwrt openwrt
-cd openwrt && ./scripts/feeds update -a && ./scripts/feeds install -a
-cp -r ../package/luci-app-alameer-quick package/ && cp -r ../files files
-cp ../config/k2p.config .config && bash ../scripts/diy-part2.sh
-make defconfig && make download -j8 && make -j$(nproc)
-```
+## البناء
+Actions ← Build Alameer Firmware ← Run workflow، ثم حمّل الملف `*phicomm_k2p*squashfs-sysupgrade.bin` من Artifacts.
 
 ## ملاحظات
-- 2.4GHz لا يدعم AC فعلياً؛ استُخدم أعلى وضع ممكن (HT20 / 802.11n).
-- القناة 116 على 5GHz قناة DFS في بعض الدول، وقد تحتاج ضبط `country` في إعدادات الراديو.
-- وضع MESH يجعل راديو 5GHz Mesh بدل AP.
+- 2.4GHz لا يدعم AC؛ المستخدم HT20 (802.11n).
+- القناة 116 DFS؛ إن لم يظهر الواي فاي 5G حدّد `COUNTRY` في ملف 999-alameer-defaults.
+- بدون firewall وDHCP: الجهاز Access Point فقط، ويحتاج راوتراً رئيسياً بعنوان 10.0.0.1.
