@@ -1,0 +1,79 @@
+#!/bin/sh
+# Alameer Software - first boot settings
+# NOTE: ImmortalWrt's own 99-default-settings is neutralised at build time (scripts/diy-part2.sh)
+#       so nothing can overwrite these values.
+
+LAN_IP="10.0.0.20"
+LAN_MASK="255.255.255.0"
+GATEWAY="10.0.0.1"      # leave "" for none
+DNS="10.0.0.1"          # leave "" for none
+
+# ---------------- System ----------------
+uci set system.@system[0].hostname='Alameer'
+uci set system.@system[0].timezone='UTC'
+uci -q delete system.@system[0].zonename
+uci commit system
+
+# ---------------- Language: Arabic, fallback English ----------------
+if ls /usr/lib/lua/luci/i18n/base.ar.* >/dev/null 2>&1 \
+   || ls /www/luci-static/resources/i18n/base.ar.* >/dev/null 2>&1 \
+   || (opkg list-installed 2>/dev/null | grep -q '^luci-i18n-base-ar ') \
+   || (apk list -I 2>/dev/null | grep -q '^luci-i18n-base-ar'); then
+	uci set luci.main.lang='ar'
+else
+	uci set luci.main.lang='en'
+fi
+uci set luci.main.mediaurlbase='/luci-static/material'
+uci commit luci
+
+# ---------------- Network: static IP, pure Access Point ----------------
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr="$LAN_IP"
+uci set network.lan.netmask="$LAN_MASK"
+if [ -n "$GATEWAY" ]; then uci set network.lan.gateway="$GATEWAY"; else uci -q delete network.lan.gateway; fi
+uci -q delete network.lan.dns
+[ -n "$DNS" ] && uci add_list network.lan.dns="$DNS"
+uci -q delete network.lan.ip6assign
+uci -q delete network.lan.ip6addr
+uci -q delete network.lan.ip6gw
+
+# no WAN routing: remove wan/wan6, put the WAN port in the LAN bridge
+uci -q delete network.wan
+uci -q delete network.wan6
+uci -q delete network.globals.ula_prefix
+BR=$(uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -1)
+if [ -n "$BR" ]; then
+	uci -q get network.$BR.ports | grep -qw wan || uci add_list network.$BR.ports='wan'
+fi
+uci commit network
+
+# ---------------- DHCP (v4) / DHCPv6 / RA : OFF ----------------
+if [ -f /etc/config/dhcp ]; then
+	uci set dhcp.lan.ignore='1'
+	uci set dhcp.lan.dhcpv4='disabled'
+	uci set dhcp.lan.dhcpv6='disabled'
+	uci set dhcp.lan.ra='disabled'
+	uci set dhcp.lan.ndp='disabled'
+	uci -q delete dhcp.wan
+	uci commit dhcp
+fi
+for s in dnsmasq odhcpd firewall; do
+	[ -x /etc/init.d/$s ] && { /etc/init.d/$s stop; /etc/init.d/$s disable; } >/dev/null 2>&1
+done
+
+# ---------------- IPv6 : OFF ----------------
+cat > /etc/sysctl.d/99-alameer-ipv6.conf <<EOT
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+net.ipv6.conf.lo.disable_ipv6=1
+EOT
+
+# ---------------- Wireless (country US, 20 dBm / 23 dBm, SSIDs) ----------------
+if /usr/sbin/alameer-wifi 20; then
+	touch /etc/alameer.wifi.done
+else
+	# radios not ready yet -> finish after boot
+	/etc/init.d/alameer-wifi enable
+fi
+
+exit 0

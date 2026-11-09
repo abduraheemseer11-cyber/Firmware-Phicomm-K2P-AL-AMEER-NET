@@ -1,0 +1,54 @@
+#!/bin/sh
+# Alameer Software - force wireless defaults.
+# usage: alameer-wifi [wait_seconds] [--reload]
+. /usr/lib/alameer/common.sh
+
+COUNTRY="US"          # regulatory domain: US (or 00) unlocks the hardware power limits
+TX_2G="20"            # dBm  (2.4GHz)  -> LuCI "Maximum transmit power"
+TX_5G="23"            # dBm  (5GHz)
+CH_2G="4";   HT_2G="HT20"
+CH_5G="116"; HT_5G="VHT40"
+
+WAIT="${1:-0}"; RELOAD=0
+for a in "$@"; do [ "$a" = "--reload" ] && RELOAD=1; done
+case "$WAIT" in ''|*[!0-9]*) WAIT=0;; esac
+
+# wait for the radios to exist (first boot race)
+t=0
+while [ -z "$(radios)" ]; do
+	[ -s /etc/config/wireless ] || wifi config >/dev/null 2>&1
+	[ -n "$(radios)" ] && break
+	[ "$t" -ge "$WAIT" ] && { logger -t alameer "no wifi radios found"; exit 1; }
+	sleep 2; t=$((t+2))
+done
+
+# ESSID suffix = last 2 bytes of the MAC
+MAC=$(cat /sys/class/net/br-lan/address /sys/class/net/eth0/address /sys/class/ieee80211/phy0/macaddress 2>/dev/null | head -1)
+SUF4=$(echo "$MAC" | awk -F: '{print toupper($5 $6)}'); [ -z "$SUF4" ] && SUF4="0000"
+BASE="AL-AMEER-NET ($SUF4)"
+
+for r in $(radios); do
+	if [ "$(get_band $r)" = "2g" ]; then
+		ch=$CH_2G; ht=$HT_2G; tx=$TX_2G; sfx="_2G"; wds=0
+	else
+		ch=$CH_5G; ht=$HT_5G; tx=$TX_5G; sfx="_5G"; wds=1
+	fi
+	uci set wireless.$r.country="$COUNTRY"
+	uci set wireless.$r.channel="$ch"
+	uci set wireless.$r.htmode="$ht"
+	uci set wireless.$r.txpower="$tx"
+	uci set wireless.$r.disabled='0'
+	for i in $(ifaces_of $r); do
+		uci set wireless.$i.mode='ap'
+		uci set wireless.$i.network='lan'
+		uci set wireless.$i.ssid="${BASE}${sfx}"
+		uci set wireless.$i.encryption='none'
+		uci -q delete wireless.$i.key
+		uci set wireless.$i.disabled='0'
+		uci set wireless.$i.isolate='0'
+		if [ "$wds" = "1" ]; then uci set wireless.$i.wds='1'; else uci -q delete wireless.$i.wds; fi
+	done
+done
+uci commit wireless
+[ "$RELOAD" = "1" ] && wifi reload
+exit 0

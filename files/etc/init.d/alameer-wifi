@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+START=99
+
+start() {
+	[ -f /etc/alameer.wifi.done ] && { /etc/init.d/alameer-wifi disable; return 0; }
+	(
+		if /usr/sbin/alameer-wifi 90 --reload; then
+			touch /etc/alameer.wifi.done
+			/etc/init.d/alameer-wifi disable
+		fi
+	) >/dev/null 2>&1 &
+}

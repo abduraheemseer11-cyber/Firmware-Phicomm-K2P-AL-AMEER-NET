@@ -1,0 +1,4 @@
+#!/bin/sh
+# Alameer Software: hardware RESET button is disabled.
+# (original handler: factory reset on long press / reboot on short press)
+exit 0

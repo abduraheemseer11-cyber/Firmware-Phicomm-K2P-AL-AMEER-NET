@@ -104,9 +104,15 @@ return view.extend({
 			o.placeholder = 'AL-AMEER-MESH';
 			o.rmempty = false;
 
-			o = s.option(form.ListValue, 'network', _('Network'));
-			o.value('lan', 'lan');
+			o = s.option(form.ListValue, 'network', _('Network (VLAN mapping)'));
+			uci.sections('network', 'interface').forEach(function (n) {
+				if (n['.name'] != 'loopback') o.value(n['.name']);
+			});
 			o.default = 'lan';
+
+			o = s.option(form.Flag, 'isolate', _('Isolate Clients'));
+			o.depends('alameer_type', 'ap');
+			o.depends('alameer_type', 'ap-wds');
 
 			o = s.option(form.ListValue, 'encryption', _('Security'));
 			o.value('none', _('No Encryption'));

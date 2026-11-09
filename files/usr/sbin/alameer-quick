@@ -1,0 +1,91 @@
+#!/bin/sh
+# Alameer Software - Quick Programming (field deployment helper)
+. /usr/lib/alameer/common.sh
+
+usage() { cat <<EOT
+Alameer Quick Programming
+  alameer-quick vlan add <id> [2g|5g|both] [t|u]   map VLAN <id> to the wifi band(s)
+                                                   and to the LAN ports (t=tagged trunk, u=untagged access)
+  alameer-quick vlan del <id>                      remove VLAN <id> (wifi goes back to lan)
+  alameer-quick isolate <2g|5g|both> <on|off>      wireless client isolation
+  alameer-quick ip <address> [netmask] [gateway]   change the device IP
+  alameer-quick wifi-reset                         re-apply factory wifi defaults (SSID/power/channel)
+  alameer-quick status                             show current values
+  alameer-quick apply                              commit and reload network + wifi
+EOT
+}
+
+brsec() { uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -1; }
+
+vlan_add() {
+	local id="$1" band="${2:-both}" mode="${3:-t}" br p i
+	case "$id" in ''|*[!0-9]*) echo "bad vlan id"; exit 1;; esac
+	[ "$id" -ge 2 ] && [ "$id" -le 4094 ] || { echo "vlan id must be 2-4094"; exit 1; }
+	br=$(brsec); [ -n "$br" ] || { echo "br-lan device section not found"; exit 1; }
+	local ports; ports=$(uci -q get network.$br.ports)
+
+	# first VLAN: keep management (VLAN 1) untagged on every port
+	if ! uci -q get network.alameer_bv1 >/dev/null; then
+		uci set network.alameer_bv1=bridge-vlan
+		uci set network.alameer_bv1.device='br-lan'
+		uci set network.alameer_bv1.vlan='1'
+		for p in $ports; do uci add_list network.alameer_bv1.ports="$p:u*"; done
+		uci set network.lan.device='br-lan.1'
+	fi
+
+	uci set network.alameer_bv$id=bridge-vlan
+	uci set network.alameer_bv$id.device='br-lan'
+	uci set network.alameer_bv$id.vlan="$id"
+	uci -q delete network.alameer_bv$id.ports
+	for p in $ports; do
+		if [ "$mode" = "u" ]; then uci add_list network.alameer_bv$id.ports="$p:u*"; else uci add_list network.alameer_bv$id.ports="$p:t"; fi
+	done
+	uci set network.alameer_v$id=interface
+	uci set network.alameer_v$id.device="br-lan.$id"
+	uci set network.alameer_v$id.proto='none'
+
+	for i in $(ifaces_of_band "$band"); do uci set wireless.$i.network="alameer_v$id"; done
+	uci commit network; uci commit wireless
+	echo "VLAN $id mapped (band=$band, ports=$mode). Run: alameer-quick apply"
+}
+
+vlan_del() {
+	local id="$1" i left
+	for i in $(ifaces_of_band both); do
+		[ "$(uci -q get wireless.$i.network)" = "alameer_v$id" ] && uci set wireless.$i.network='lan'
+	done
+	uci -q delete network.alameer_bv$id
+	uci -q delete network.alameer_v$id
+	left=$(uci show network | sed -n "s/^network\.\(alameer_bv[0-9]*\)=bridge-vlan$/\1/p" | grep -v '^alameer_bv1$')
+	if [ -z "$left" ]; then
+		uci -q delete network.alameer_bv1
+		uci set network.lan.device='br-lan'
+	fi
+	uci commit network; uci commit wireless
+	echo "VLAN $id removed. Run: alameer-quick apply"
+}
+
+case "$1" in
+	vlan)
+		case "$2" in add) shift 2; vlan_add "$@";; del) vlan_del "$3";; *) usage;; esac ;;
+	isolate)
+		[ -n "$2" ] && [ -n "$3" ] || { usage; exit 1; }
+		for i in $(ifaces_of_band "$2"); do
+			[ "$3" = "on" ] && uci set wireless.$i.isolate='1' || uci set wireless.$i.isolate='0'
+		done
+		uci commit wireless; echo "isolation $3 on $2. Run: alameer-quick apply" ;;
+	ip)
+		[ -n "$2" ] || { usage; exit 1; }
+		uci set network.lan.ipaddr="$2"
+		[ -n "$3" ] && uci set network.lan.netmask="$3"
+		[ -n "$4" ] && uci set network.lan.gateway="$4"
+		uci commit network; echo "ip set. Run: alameer-quick apply" ;;
+	wifi-reset) /usr/sbin/alameer-wifi 0 --reload ;;
+	status)
+		uci show network.lan; uci show wireless | grep -E "country|channel|htmode|txpower|ssid|network|isolate|wds|mode" ;;
+	apply)
+		uci commit
+		( sleep 1; /etc/init.d/network reload; wifi reload ) >/dev/null 2>&1 &
+		echo "applying..." ;;
+	*) usage ;;
+esac

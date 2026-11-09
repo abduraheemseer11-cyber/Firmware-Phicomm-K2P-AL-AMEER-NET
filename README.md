@@ -26,14 +26,27 @@
 (نفس الإعدادات الحقيقية في Network ← Wireless)، وتحتوي: IP / Netmask / Gateway، وقناة وعرض وقدرة كل راديو،
 ونوع البرمجة (AP / AP-WDS / MESH)، وESSID، والتشفير وكلمة المرور.
 
-## تقليل الحجم
-أُزيل: الصينية والعربية، firewall4، dnsmasq/odhcpd، IPv6 (kernel + packages)، PPP، تطبيقات LuCI الإضافية، واستُبدل wpad بنسخة mesh-mbedtls الأصغر.
-حجم `sysupgrade.bin` يظهر في خطوة "Collect images" في GitHub Actions (الحد الأقصى للجهاز ≈ 15.4MB).
+## ملفات الإعداد عند أول إقلاع
+| الملف | الوظيفة |
+|---|---|
+| `files/etc/uci-defaults/99-custom-settings` | IP 10.0.0.20، إيقاف DHCP/IPv6/WAN، الهوستنيم، اللغة (عربي مع رجوع للإنجليزية) |
+| `files/usr/sbin/alameer-wifi` | Country US، قناة/عرض/قدرة (20 / 23 dBm)، الـ SSID — ينتظر ظهور الراديو |
+| `files/etc/init.d/alameer-wifi` | احتياطي: يكمل إعداد الواي فاي بعد الإقلاع إذا لم يكن الراديو جاهزاً |
+| `files/etc/rc.button/reset` | تعطيل زر Reset |
+| `files/usr/sbin/alameer-quick` | Quick Programming: VLAN، عزل العملاء، تغيير IP |
+| `scripts/diy-part2.sh` | يعطّل سكربت ImmortalWrt الصيني `99-default-settings` حتى لا يكتب فوق الإعدادات |
 
-## البناء
-Actions ← Build Alameer Firmware ← Run workflow، ثم حمّل الملف `*phicomm_k2p*squashfs-sysupgrade.bin` من Artifacts.
+## alameer-quick
+```
+alameer-quick vlan add 20 5g t     # VLAN 20 على 5GHz، منافذ LAN كـ trunk
+alameer-quick vlan del 20
+alameer-quick isolate both on      # عزل العملاء
+alameer-quick ip 10.0.0.30 255.255.255.0 10.0.0.1
+alameer-quick wifi-reset
+alameer-quick apply
+```
 
 ## ملاحظات
-- 2.4GHz لا يدعم AC؛ المستخدم HT20 (802.11n).
-- القناة 116 DFS؛ إن لم يظهر الواي فاي 5G حدّد `COUNTRY` في ملف 999-alameer-defaults.
-- بدون firewall وDHCP: الجهاز Access Point فقط، ويحتاج راوتراً رئيسياً بعنوان 10.0.0.1.
+- زر Reset: التعطيل برمجي فقط. وضع Failsafe عند الإقلاع والـ bootloader لا يتأثران، إلا إذا فعّلت خيار `disable_failsafe` عند تشغيل الـ workflow (وعندها لا يوجد استرجاع عبر failsafe).
+- Country US: يرفع حدود القدرة لكنه قد يخالف أنظمة بلدك. القناة 116 DFS وقد تتأخر دقيقة قبل البث.
+- 2.4GHz لا يدعم AC؛ المستخدم HT20.
