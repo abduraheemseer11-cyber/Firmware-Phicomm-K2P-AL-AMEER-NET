@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/*
+ * KT GiGA WiFi Wave2 (KM08-708H)  -  bring-up draft for OpenWrt 23.05
+ *
+ * Facts taken from a running vendor build (board "hm,km08-708h-9000"):
+ *   SoC   MT7621AT, 256 MB RAM (0x00000000-0x0fffffff)
+ *   Flash 128 MB SLC NAND (Winbond W29N01HV), 2048 B pages, 128 KiB blocks
+ *   WiFi  MT7615E on PCIe port 0 (two phys: 2.4 GHz + 5 GHz)
+ *   Switch MT7530: port0 "mgm", port1 "lan4", port2 "lan3", port3 "lan2", port4 "lan1"
+ *   Partitions as listed in /proc/mtd of the vendor build.
+ *
+ * NOT verified: LED / button GPIOs, ethernet MAC location, EEPROM offset.
+ * Netboot the initramfs image over serial and verify before flashing NAND.
+ */
+
+#include "mt7621.dtsi"
+
+/ {
+	compatible = "kt,km08-708h", "mediatek,mt7621-soc";
+	model = "KT GiGA WiFi Wave2 KM08-708H";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x10000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyS0,115200";
+	};
+};
+
+&nand {
+	status = "okay";
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "u-boot";
+			reg = <0x0 0x80000>;
+			read-only;
+		};
+
+		partition@80000 {
+			label = "u-boot-env";
+			reg = <0x80000 0x40000>;
+			read-only;
+		};
+
+		factory: partition@c0000 {
+			label = "factory";
+			reg = <0xc0000 0x40000>;
+			read-only;
+		};
+
+		partition@100000 {
+			label = "bdinfo";
+			reg = <0x100000 0x40000>;
+			read-only;
+		};
+
+		partition@140000 {
+			label = "kernel";
+			reg = <0x140000 0x400000>;
+		};
+
+		partition@540000 {
+			label = "ubi";
+			reg = <0x540000 0x6d00000>;
+		};
+
+		partition@7240000 {
+			label = "recoverk";
+			reg = <0x7240000 0x720000>;
+			read-only;
+		};
+
+		partition@7960000 {
+			label = "recoverr";
+			reg = <0x7960000 0xe0000>;
+			read-only;
+		};
+
+		partition@7a40000 {
+			label = "nvram";
+			reg = <0x7a40000 0xe0000>;
+			read-only;
+		};
+
+		partition@7b20000 {
+			label = "log";
+			reg = <0x7b20000 0x4e0000>;
+			read-only;
+		};
+	};
+};
+
+&pcie {
+	status = "okay";
+};
+
+&pcie0 {
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		mediatek,mtd-eeprom = <&factory 0x0>;
+	};
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "mgm";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan4";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@4 {
+			status = "okay";
+			label = "lan1";
+		};
+	};
+};

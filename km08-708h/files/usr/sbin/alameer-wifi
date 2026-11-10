@@ -1,0 +1,82 @@
+#!/bin/sh
+# Alameer Software (KM08-708H) - write the wireless configuration.
+# usage: alameer-wifi [wait_seconds] [--reload]
+
+COUNTRY="US"
+TX_2G="32"; CH_2G="6";   HT_2G="HT20"
+TX_5G="32"; CH_5G="149"; HT_5G="VHT80"
+MESH_ID="AL-AMEER-MESH-BACKUP"
+MESH_IF="mesh0"
+KEYFILE="/etc/alameer/mesh.key"
+
+WAIT="${1:-0}"; RELOAD=0
+for a in "$@"; do [ "$a" = "--reload" ] && RELOAD=1; done
+case "$WAIT" in ''|*[!0-9]*) WAIT=0;; esac
+
+radios() { uci show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-device$/\1/p'; }
+get_band() {
+	local r="$1" b ch
+	b=$(uci -q get wireless.$r.band); [ -n "$b" ] && { echo "$b"; return; }
+	ch=$(uci -q get wireless.$r.channel)
+	case "$ch" in ''|auto|*[!0-9]*) echo 5g;; *) [ "$ch" -le 14 ] && echo 2g || echo 5g;; esac
+}
+ifaces_of() {
+	uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.device='$1'$/\1/p" | while read -r i; do
+		[ "$(uci -q get wireless.$i)" = "wifi-iface" ] && [ "$i" != "alameer_mesh" ] && echo "$i"
+	done
+}
+
+t=0
+while [ -z "$(radios)" ]; do
+	[ -s /etc/config/wireless ] || wifi config >/dev/null 2>&1
+	[ -n "$(radios)" ] && break
+	[ "$t" -ge "$WAIT" ] && { logger -t alameer "no wifi radios found"; exit 1; }
+	sleep 2; t=$((t+2))
+done
+
+MAC=$(cat /sys/class/ieee80211/phy0/macaddress /sys/class/net/eth0/address 2>/dev/null | head -1)
+SUF4=$(echo "$MAC" | awk -F: '{print toupper($5 $6)}'); [ -z "$SUF4" ] && SUF4="0000"
+BASE="AL-AMEER-NET ($SUF4)"
+
+R5=""
+for r in $(radios); do
+	if [ "$(get_band $r)" = "2g" ]; then
+		ch=$CH_2G; ht=$HT_2G; tx=$TX_2G; sfx="_2G"
+	else
+		ch=$CH_5G; ht=$HT_5G; tx=$TX_5G; sfx="_5G"; R5=$r
+	fi
+	uci set wireless.$r.country="$COUNTRY"
+	uci set wireless.$r.channel="$ch"
+	uci set wireless.$r.htmode="$ht"
+	uci set wireless.$r.txpower="$tx"
+	uci set wireless.$r.disabled='0'
+	for i in $(ifaces_of $r); do
+		uci set wireless.$i.mode='ap'
+		uci set wireless.$i.network='lan'
+		uci set wireless.$i.ssid="${BASE}${sfx}"
+		uci set wireless.$i.encryption='none'
+		uci -q delete wireless.$i.key
+		uci set wireless.$i.disabled='0'
+	done
+done
+
+# hidden backhaul: 802.11s mesh on the 5GHz radio (802.11s uses SAE, not WPA2-PSK)
+if [ -n "$R5" ] && [ -s "$KEYFILE" ]; then
+	KEY=$(head -n1 "$KEYFILE")
+	uci set wireless.alameer_mesh=wifi-iface
+	uci set wireless.alameer_mesh.device="$R5"
+	uci set wireless.alameer_mesh.mode='mesh'
+	uci set wireless.alameer_mesh.mesh_id="$MESH_ID"
+	uci set wireless.alameer_mesh.mesh_fwding='1'
+	uci set wireless.alameer_mesh.encryption='sae'
+	uci set wireless.alameer_mesh.key="$KEY"
+	uci set wireless.alameer_mesh.network='meshbk'
+	uci set wireless.alameer_mesh.ifname="$MESH_IF"
+	uci set wireless.alameer_mesh.disabled='0'
+else
+	logger -t alameer "mesh not configured (no 5GHz radio or empty $KEYFILE)"
+fi
+
+uci commit wireless
+[ "$RELOAD" = "1" ] && wifi reload
+exit 0

@@ -5,6 +5,13 @@
 **Custom ImmortalWrt firmware for Phicomm K2P (MT7621 + MT7615, 16MB flash)**
 </div>
 
+
+## Devices
+| Device | Base | Workflow | Folder |
+|---|---|---|---|
+| Phicomm K2P | ImmortalWrt 24.10 | `build.yml` | repo root (`files/`, `config/`, `package/`) |
+| KT GiGA WiFi Wave2 KM08-708H | OpenWrt 23.05 | `build-openwrt.yml` | `km08-708h/` (see its README - bring-up draft) |
+
 ## الإعدادات الافتراضية
 
 | الإعداد | القيمة |

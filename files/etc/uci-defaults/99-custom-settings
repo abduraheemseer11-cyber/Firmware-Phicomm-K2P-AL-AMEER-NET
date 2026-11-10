@@ -9,7 +9,7 @@ GATEWAY="10.0.0.1"      # leave "" for none
 DNS="10.0.0.1"          # leave "" for none
 
 # ---------------- System ----------------
-uci set system.@system[0].hostname='Maqdam'
+uci set system.@system[0].hostname='Alameer'
 uci set system.@system[0].timezone='UTC'
 uci -q delete system.@system[0].zonename
 uci commit system
