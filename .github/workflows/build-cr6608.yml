@@ -1,0 +1,99 @@
+name: Build OpenWrt 23.05 - Xiaomi Mi Router CR6608
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['cr6608-v*']
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPO: https://github.com/openwrt/openwrt
+  SOURCE_BRANCH: openwrt-23.05
+  TZ: UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget
+
+      - name: Clone OpenWrt 23.05
+        run: git clone --depth 1 -b $SOURCE_BRANCH $SOURCE_REPO openwrt
+
+      - name: Feeds (official + Argon)
+        run: |
+          cd openwrt
+          bash ../cr6608/scripts/feeds-extra.sh
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Install files/ overlay and .config
+        run: |
+          chmod +x cr6608/files/etc/uci-defaults/* cr6608/files/etc/init.d/* cr6608/files/usr/sbin/*
+          rm -rf openwrt/files && cp -r cr6608/files openwrt/files
+          cp cr6608/config/cr6608.config openwrt/.config
+          cd openwrt && make defconfig
+
+      - name: Verify configuration
+        run: |
+          cd openwrt
+          grep -q '^CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6608=y' .config \
+            || { echo "::error::xiaomi_mi-router-cr6608 not selected"; exit 1; }
+          for p in luci-theme-argon luci-app-argon-config lldpd luci-app-lldpd kmod-8021q luci-app-watchcat iw-full curl kmod-mt7915e; do
+            grep -q "^CONFIG_PACKAGE_$p=y" .config || echo "::warning::$p is not selected"
+          done
+
+      - name: Download sources
+        run: |
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Verify image contents
+        run: |
+          ROOT=$(find openwrt/build_dir -maxdepth 3 -type d -name 'root-ramips' | head -1)
+          for f in etc/uci-defaults/90-alameer-network etc/uci-defaults/91-alameer-wifi etc/uci-defaults/99-alameer-branding \
+                   usr/sbin/alameer-wifi etc/config/dhcp etc/banner; do
+            [ -e "$ROOT/$f" ] && echo "OK  $f" || { echo "::error::missing $f"; exit 1; }
+          done
+          grep DISTRIB_ "$ROOT/etc/openwrt_release"
+
+      - name: Collect images
+        run: |
+          mkdir -p out
+          cp openwrt/bin/targets/ramips/mt7621/*cr6608* out/
+          cp openwrt/bin/targets/ramips/mt7621/*.manifest out/ || true
+          ls -lh out
+          ls out/*sysupgrade.bin out/*initramfs-kernel.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Alameer-CR6608-firmware
+          path: out/*
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/*sysupgrade.bin
+            out/*initramfs-kernel.bin
+            out/*.manifest

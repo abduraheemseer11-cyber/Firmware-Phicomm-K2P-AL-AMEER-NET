@@ -1,0 +1,7 @@
+#!/bin/sh
+if /usr/sbin/alameer-wifi 20; then
+	touch /etc/alameer.wifi.done
+else
+	/etc/init.d/alameer-wifi enable
+fi
+exit 0

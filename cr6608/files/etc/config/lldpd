@@ -1,0 +1,6 @@
+config lldpd 'config'
+	option enable_cdp '1'
+	option enable_fdp '1'
+	option enable_sonmp '1'
+	option enable_edp '1'
+	option lldp_description 'Alameer Software'

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Alameer Software - branding and system defaults
+
+uci set system.@system[0].hostname='Alameer-AP'
+uci set system.@system[0].timezone='<+03>-3'
+uci set system.@system[0].zonename='Asia/Aden'
+uci commit system
+
+# firmware name shown in LuCI "System > Overview" (only the description line is changed;
+# arch / target / revision stay untouched so opkg and sysupgrade keep working)
+if [ -f /etc/openwrt_release ]; then
+	sed -i "s|^DISTRIB_DESCRIPTION=.*|DISTRIB_DESCRIPTION='Alameer Software 1.0'|" /etc/openwrt_release
+fi
+
+# LuCI: Arabic if the pack is installed, otherwise English; Argon theme
+if ls /usr/lib/lua/luci/i18n/base.ar.* >/dev/null 2>&1 \
+   || ls /www/luci-static/resources/i18n/base.ar.* >/dev/null 2>&1 \
+   || (opkg list-installed 2>/dev/null | grep -q '^luci-i18n-base-ar '); then
+	uci set luci.main.lang='ar'
+else
+	uci set luci.main.lang='en'
+fi
+[ -d /www/luci-static/argon ] && uci set luci.main.mediaurlbase='/luci-static/argon'
+uci commit luci
+
+/etc/init.d/lldpd enable >/dev/null 2>&1
+exit 0

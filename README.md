@@ -11,6 +11,7 @@
 |---|---|---|---|
 | Phicomm K2P | ImmortalWrt 24.10 | `build.yml` | repo root (`files/`, `config/`, `package/`) |
 | KT GiGA WiFi Wave2 KM08-708H | OpenWrt 23.05 | `build-openwrt.yml` | `km08-708h/` (see its README - bring-up draft) |
+| Xiaomi Mi Router CR6608 | OpenWrt 23.05 (official target) | `build-cr6608.yml` | `cr6608/` |
 
 ## الإعدادات الافتراضية
 

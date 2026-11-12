@@ -1,0 +1,59 @@
+#!/bin/sh
+# Alameer Software (CR6608) - transparent bridge / pure Access Point
+# Port names are read from /etc/board.json, so nothing is hard-coded.
+
+LAN_IP="192.168.10.1"
+LAN_MASK="255.255.255.0"
+IP_FROM_MAC=0        # 1 = 192.168.10.<last MAC byte> (avoids conflicts when deploying many APs)
+
+PORTS=$(jsonfilter -i /etc/board.json -e '@.network.lan.ports[*]' 2>/dev/null)
+WAN=$(jsonfilter -i /etc/board.json -e '@.network.wan.device' 2>/dev/null)
+if [ -z "$PORTS" ]; then
+	logger -t alameer "board.json has no LAN ports - network left at defaults"
+	exit 0
+fi
+
+BR=$(uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -1)
+if [ -z "$BR" ]; then
+	logger -t alameer "br-lan device section not found - network left at defaults"
+	exit 0
+fi
+
+# every physical port (WAN + LAN) into br-lan
+for p in $PORTS $WAN; do
+	[ -n "$p" ] || continue
+	uci -q get network.$BR.ports | grep -qw "$p" || uci add_list network.$BR.ports="$p"
+done
+
+if [ "$IP_FROM_MAC" = "1" ]; then
+	MAC=$(cat /sys/class/ieee80211/phy0/macaddress /sys/class/net/eth0/address 2>/dev/null | head -1)
+	LAST=$(printf '%d' "0x$(echo "$MAC" | awk -F: '{print $6}')" 2>/dev/null)
+	[ -n "$LAST" ] || LAST=1
+	[ "$LAST" -lt 2 ] && LAST=$((LAST + 2))
+	[ "$LAST" -gt 254 ] && LAST=254
+	LAN_IP="192.168.10.$LAST"
+fi
+
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr="$LAN_IP"
+uci set network.lan.netmask="$LAN_MASK"
+uci -q delete network.lan.gateway
+uci -q delete network.lan.dns
+uci -q delete network.lan.ip6assign
+uci -q delete network.wan
+uci -q delete network.wan6
+uci -q delete network.globals.ula_prefix
+uci commit network
+
+uci set dhcp.lan.ignore='1'
+uci set dhcp.lan.dhcpv4='disabled'
+uci set dhcp.lan.dhcpv6='disabled'
+uci set dhcp.lan.ra='disabled'
+uci set dhcp.lan.ndp='disabled'
+uci -q delete dhcp.wan
+uci commit dhcp
+
+for s in dnsmasq odhcpd firewall; do
+	[ -x /etc/init.d/$s ] && { /etc/init.d/$s stop; /etc/init.d/$s disable; } >/dev/null 2>&1
+done
+exit 0
